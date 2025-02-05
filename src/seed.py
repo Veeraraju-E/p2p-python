@@ -1,16 +1,21 @@
 # >1 seed node
 import socket
 import threading
-
+import time
 
 class SeedNode:
-    def __init__(self,port):
-        self.peer_list = [] # list of tuples of (addr, port) of all peers in the network
-        self.ip = socket.gethostbyname(socket.getfqdn())
-        self.port = port
-        self.is_peer_list_locked = False
-        self.listening = False
-    
+    def __init__(self, port):
+        try:
+            self.peer_list = [] # list of tuples of (addr, port) of all peers in the network
+            self.ip = socket.gethostbyname(socket.getfqdn())
+            self.port = port
+            self.is_peer_list_locked = False
+            self.listening = False
+            print(f'Config of SeedNode: {self.ip}:{self.port}, Peer List: {self.peer_list}')
+            # time.sleep(2)
+        except Exception as e:
+            print(f"Error initializing SeedNode {port}: {e}")
+
     def start(self):
         self.listening = True
         self.listen()
@@ -55,8 +60,9 @@ class SeedNode:
             if len(peer_list_temp) != 0:
                 for peers_ip,peers_port in peer_list_temp:
                     msg+=f"{peers_ip}:{peers_port},"
-
-                msg = msg.removesuffix(',')
+                # print(msg)
+                msg = msg.rstrip(',')
+                print(msg)
             else:
                 msg+="No"
             peer_socket.close()
@@ -134,16 +140,24 @@ class SeedNode:
             self.server =  socket.socket(socket.AF_INET,socket.SOCK_STREAM)
             self.server.bind((self.ip,self.port))
             self.server.listen()
+            print(f"SeedNode listening on {self.ip}:{self.port}")
+
             while self.listening:
-                peer_socket,peer_addr = self.server.accept()
-                t = threading.Thread(target=self.handle_request,args=(peer_socket,peer_addr))
+                peer_socket, peer_addr = self.server.accept()
+                print(f"Accepted connection from {peer_addr}")
+                t = threading.Thread(target=self.handle_request, args=(peer_socket,peer_addr))
                 t.daemon = True
                 t.start()
         except Exception as e:
             if self.listening:
-                print(f"Error in setting up socket {e}")
+                print(f"self.ip, self.port : {self.ip}:{self.port} Error in setting up socket {e}")
     
     def stop(self):
         self.listening = False
-        self.server.shutdown(socket.SHUT_RDWR)
-        self.server.close()
+        if self.server:
+            try:
+                self.server.shutdown(socket.SHUT_RDWR)
+            except Exception as e:
+                print(f"Error shutting down socket: {e}")
+            finally:
+                self.server.close()
