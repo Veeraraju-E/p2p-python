@@ -2,10 +2,12 @@ from seed import SeedNode
 import threading
 import traceback
 import os
+import time
+
 class P2PNetwork:
 
-    def __init__(self):
-        self.config_file = "config.txt"
+    def __init__(self, config_file="config.txt"):
+        self.config_file = config_file
         self.seeds = []
         self.seed_list_lock = False
     
@@ -19,7 +21,7 @@ class P2PNetwork:
 
             self.seeds.append(seed)
             with open(self.config_file,"a") as file:
-                    file.write(f"{seed.ip}:{seed.port}\n")
+                file.write(f"{seed.ip}:{seed.port}\n")
 
             self.seed_list_lock = False
             seed.start()
@@ -31,8 +33,8 @@ class P2PNetwork:
     def initialize_seeds(self,n:int):
         try:
             for i in range(n):
-                t = threading.Thread(target=self.initialize_seed,args=(5000+i*10,))
-                t.daemon = True
+                t = threading.Thread(target=self.initialize_seed,args=(2000+i*10,), daemon=True)
+                # t.daemon = True
                 t.start()
             return True
         except:
