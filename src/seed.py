@@ -137,7 +137,7 @@ class SeedNode:
         For reporting a dead node: Peer message format: Dead Node:<DeadNode.IP>:<DeadNode.Port>:<self.timestamp>:<self.IP>
         '''
         try:
-            self.server =  socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            self.server = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
             self.server.bind((self.ip,self.port))
             self.server.listen()
             print(f"SeedNode listening on {self.ip}:{self.port}")
@@ -145,8 +145,8 @@ class SeedNode:
             while self.listening:
                 peer_socket, peer_addr = self.server.accept()
                 print(f"Accepted connection from {peer_addr}")
-                t = threading.Thread(target=self.handle_request, args=(peer_socket,peer_addr))
-                t.daemon = True
+                t = threading.Thread(target=self.handle_request, args=(peer_socket,peer_addr), daemon=True)
+                # t.daemon = True
                 t.start()
         except Exception as e:
             if self.listening:
