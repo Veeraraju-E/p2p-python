@@ -3,6 +3,12 @@ import socket
 import threading
 import traceback
 
+"""
+1. Broadcast
+2. Ping
+3. Dead node reporting
+"""
+
 class PeerNode:
     def __init__(self, config_file='config.txt'):
         try:
@@ -15,60 +21,74 @@ class PeerNode:
             self.listening = False
             self.lock_peer_list = False
             self.lock_seed_list = False
+            self.received_peer_set = set()
+            self.no_seed_nodes = 0
+            self.no_peers_connected = 0
         except Exception as e:
             print(f"Error initializing PeerNode: {e}")
 
     def handle_request(self, peer_socket: socket.socket, peer_addr: str):
         msg = ""
-        print(f"Received connection from {peer_addr}")
+
         peer_socket.settimeout(10.0)
-        while True:
-            try:
-                data = peer_socket.recv(1024)
-                if not data:
-                    break
-                msg += data.decode()
+        try:
+            while True:
+                try:
+                    data = peer_socket.recv(1024)
+                    if not data:
+                        break
+                    msg += data.decode()
 
-                if msg.startswith("SeedNode="):
-                    self.connect_to_peers(msg, peer_socket, peer_addr)
-                    break
-                elif msg.startswith("Peer_Request_Sent"):
-                    self.accept_received_peer_request(msg, peer_socket)
-                elif msg.startswith("Peer_Request_Accepted"):
-                    self.accept_sent_peer_request(msg, peer_socket)
-                else:
-                    peer_socket.sendall("Invalid Message Format".encode())
+                except socket.timeout:
+                    print(f"Timeout no data received from {peer_addr}.")
                     break
 
-            except socket.timeout:
-                print(f"Timeout no data received from {peer_addr}.")
-                break
-            except Exception as e:
-                print(f"Error receiving data from {peer_addr}: {e}")
-                break
+            if msg.startswith("SeedNode="):
+
+                self.no_seed_nodes-=1
+                self.process_seed_request(msg)
+
+                if self.no_seed_nodes == 0:
+                    self.no_peers_connected = len(self.received_peer_set)
+                    for peer_ip,peer_port in self.received_peer_set:
+                        t = threading.Thread(target=self.send_request_to_peer,args=(peer_ip,peer_port),daemon=True)
+                        t.start()
+                    
+            
+            elif msg.startswith("Peer_Request_Sent"):
+                self.accept_received_peer_request(msg, peer_socket)
+            elif msg.startswith("Peer_Request_Accepted"):
+                self.accept_sent_peer_request(msg, peer_socket)
+            else:
+                peer_socket.sendall("Invalid Message Format".encode())
+
+        except Exception as e:
+            print(f"Error receiving data from {peer_addr}: {e}")
+        
         peer_socket.close()
 
-    def connect_to_peers(self, seed_reply: str, seed_socket, seed_addr):
+    def process_seed_request(self, seed_reply: str):
         try:
             seed_address, seed_reply = seed_reply.split('||')
             _, seed_address = seed_address.split('=')
             seed_ip, seed_port = seed_address.split(':')
-            print(seed_ip, seed_port)
+            
             while self.lock_seed_list:
                 waiting = 0
-
+            
             self.lock_seed_list = True
             self.seed_node_list.append((seed_ip, int(seed_port)))
             self.lock_seed_list = False
 
-            print(f"----------Seed Node:{seed_addr} connected----------")
+            print(f"----------Seed Node:{seed_address} connected----------")
             peers_available = None
             if seed_reply != "No":
+
                 peers_available = seed_reply.split(',')
                 for peer in peers_available:
                     peer_ip, peer_port = peer.split(':')
-                    t = threading.Thread(target=self.send_request_to_peer, args=(peer_ip, int(peer_port)), daemon=True)
-                    t.start()
+                    self.received_peer_set.add((peer_ip,int(peer_port)))
+                
 
         except Exception as e:
             print(f"Error occurred in connecting to peers! {e}")
@@ -79,12 +99,13 @@ class PeerNode:
         try:
             _, peer_ip, peer_port = msg.split(':')
             peer_socket.close()
-
+            print(f"Received acceptance from the peer {peer_ip}:{peer_port}")
             while self.lock_peer_list:
                 waiting = 1
 
             self.lock_peer_list = True
             self.peer_list.append((peer_ip, int(peer_port)))
+            print(f"Peer List now is {self.peer_list}")
             self.lock_peer_list = False
 
         except Exception as e:
@@ -96,11 +117,12 @@ class PeerNode:
         try:
             peer_socket.close()
             _, peer_ip, peer_port = msg.split(':')
+            print(f"Peer request received from {peer_ip}:{peer_port}")
             peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             peer_socket.connect((peer_ip, int(peer_port)))
             peer_socket.sendall(f"Peer_Request_Accepted:{self.ip}:{self.port}".encode())
             peer_socket.close()
-
+            print(f"Peer request accepted message is sent to {peer_ip}:{peer_port}")
             while self.lock_peer_list:
                 waiting = 0
 
@@ -115,10 +137,13 @@ class PeerNode:
 
     def send_request_to_peer(self, peer_ip, peer_port):
         try:
+            print(f"Entered the send request to peer node function {self.ip}:{self.port}")
+
             peer_send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             peer_send_socket.connect((peer_ip, peer_port))
             peer_send_socket.sendall(f"Peer_Request_Sent:{self.ip}:{self.port}".encode())
             peer_send_socket.close()
+            print(f"Peer request sent to {peer_ip}:{peer_port}")
         except Exception as e:
             print(f"Error occurred in sending peer request! {e}")
             traceback.print_exc()
@@ -159,7 +184,7 @@ class PeerNode:
             with open(self.config_file, "r") as seed_list:
                 seeds = seed_list.readlines()
                 no_of_seeds_to_connect = random.randint(len(seeds) // 2 + 1, len(seeds))
-
+                self.no_seed_nodes = no_of_seeds_to_connect
                 indices_seeds_to_connect = []
                 while len(indices_seeds_to_connect) != no_of_seeds_to_connect:
                     seed_index = random.randint(0, len(seeds) - 1)
@@ -171,8 +196,11 @@ class PeerNode:
                     seed_port = seed_port.strip()
                     t = threading.Thread(target=self.send_request_to_seed, args=(seed_ip, int(seed_port)), daemon=True)
                     t.start()
+                    t.join()
+                
                 while len(self.seed_node_list) != no_of_seeds_to_connect:
                     waiting = 0
+
                 return True
 
         except Exception as e:
@@ -214,52 +242,58 @@ class PeerNode:
             print(f"Error occurred! {e}")
             return ""
 
+try:
+    peer = PeerNode()
+    is_all_initialized = peer.connect_to_network()
 
-peer = PeerNode()
-is_all_initialized = peer.connect_to_network()
+    if is_all_initialized:
+        print("\n" + "=" * 50)
+        print("       Welcome to the Panel of this Client       ")
+        print("=" * 50)
 
-if is_all_initialized:
-    print("\n" + "=" * 50)
-    print("       Welcome to the Panel of this Client       ")
-    print("=" * 50)
+        menu = """
+        Menu Options:
+        1. See all Peers Nodes connections
+        2. See all Seed Nodes connections
+        3: Stop the client
+        4: Show the menu again
+        """
 
-    menu = """
-    Menu Options:
-    1. See all Peers Nodes connections
-    2. See all Seed Nodes connections
-    3: Stop the client
-    4: Show the menu again
-    """
+        print(menu)
 
-    print(menu)
+        while True:
+            try:
+                action = int(input("\nEnter your action number: "))
 
-    while True:
-        try:
-            action = int(input("\nEnter your action number: "))
+                if action == 1:
+                    peers = peer.see_all_peer_nodes()
+                    print(peers)
 
-            if action == 1:
-                peers = peer.see_all_peer_nodes()
-                print(peers)
+                elif action == 2:
+                    seeds = peer.see_all_seed_nodes()
+                    print(seeds)
 
-            elif action == 2:
-                seeds = peer.see_all_seed_nodes()
-                print(seeds)
+                elif action == 3:
+                    try:
+                        peer.stop()
+                        print("Peer Shut Down...")
+                        break
+                    except Exception as e:
+                        print(f"Error occurred! {e}")
 
-            elif action == 3:
-                try:
-                    peer.stop()
-                    print("Peer Shut Down...")
-                    break
-                except Exception as e:
-                    print(f"Error occurred! {e}")
+                elif action == 4:
+                    print(menu)
 
-            elif action == 4:
-                print(menu)
+                else:
+                    print(f"Invalid option! Please select a valid action.\n{menu}")
 
-            else:
-                print(f"Invalid option! Please select a valid action.\n{menu}")
-
-        except ValueError:
-            print("Invalid input! Please enter a number corresponding to an action.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
+            except ValueError:
+                print("Invalid input! Please enter a number corresponding to an action.")
+            except Exception as e:
+                print(f"An error occurred: {e}")
+except KeyboardInterrupt:
+    try:
+        peer.stop()
+        print("Peer Shut Down...")
+    except Exception as e:
+        print(f"Error occurred! {e}")
