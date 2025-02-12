@@ -3,6 +3,11 @@ import socket
 import threading
 import time
 
+"""
+1. Power law
+2. Dead node handling
+"""
+
 class SeedNode:
     def __init__(self, port):
         try:
@@ -47,9 +52,9 @@ class SeedNode:
         try:
 
             _,peer_ip,peer_port = msg.split(':')
-            
-
+            print(f"Received connection request from {peer_ip}:{peer_port}")
             peer_list_temp = self.peer_list
+            print(f"Peer List at {self.ip}:{self.port} = {self.peer_list}")
             if (peer_ip,peer_port) in self.peer_list:
                 peer_socket.sendall("You are already connected to the me".encode())
                 return
@@ -60,7 +65,8 @@ class SeedNode:
             if len(peer_list_temp) != 0:
                 for peers_ip,peers_port in peer_list_temp:
                     msg+=f"{peers_ip}:{peers_port},"
-                # print(msg)
+                    print(msg)
+                
                 msg = msg.rstrip(',')
                 print(msg)
             else:
@@ -100,7 +106,7 @@ class SeedNode:
 
     def handle_request(self,peer_socket : socket.socket,peer_addr : str):
         msg = ""
-        print(f"Received connection from {peer_addr}")
+        
         peer_socket.settimeout(10.0)
         while True:
             try:
@@ -150,7 +156,7 @@ class SeedNode:
                 t.start()
         except Exception as e:
             if self.listening:
-                print(f"self.ip, self.port : {self.ip}:{self.port} Error in setting up socket {e}")
+                print(f"Self.ip, Self.port : {self.ip}:{self.port} Error in setting up socket {e}")
     
     def stop(self):
         self.listening = False

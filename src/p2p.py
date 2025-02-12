@@ -114,67 +114,71 @@ except ValueError:
 
 if __name__ == "__main__":
     # Initialize the P2P network
-    p2p = P2PNetwork()
-    is_all_initialized =  p2p.initialize_seeds(n)
+    try:
+        p2p = P2PNetwork()
+        is_all_initialized =  p2p.initialize_seeds(n)
 
-    while len(p2p.seeds) != n:
-        waiting = 0
+        while len(p2p.seeds) != n:
+            waiting = 0
 
-    if is_all_initialized:
+        if is_all_initialized:
 
-        print("\n" + "=" * 50)
-        print("       Welcome to the Admin Panel of the Network       ")
-        print("=" * 50)
+            print("\n" + "=" * 50)
+            print("       Welcome to the Admin Panel of the Network       ")
+            print("=" * 50)
 
-        menu = """
-        Menu Options:
-        1. See all Seed Nodes of the Network
-        2. Get A Seed Node Description
-        3: Stop a specific seed node
-        4: Stop all seed nodes and shut down the network
-        5: Show the menu again
-        """
+            menu = """
+            Menu Options:
+            1. See all Seed Nodes of the Network
+            2. Get A Seed Node Description
+            3: Stop a specific seed node
+            4: Stop all seed nodes and shut down the network
+            5: Show the menu again
+            """
 
-        print(menu)
+            print(menu)
 
-        while True:
-            try:
-                action = int(input("\nEnter your action number: "))
+            while True:
+                try:
+                    action = int(input("\nEnter your action number: "))
 
-                if action == 1:
-                    seeds = p2p.see_seed_nodes()
-                    print(seeds)
+                    if action == 1:
+                        seeds = p2p.see_seed_nodes()
+                        print(seeds)
 
-                elif action == 2:
-                    ip_port = input("Enter the IP and PORT of the seed node (format: IP:PORT): ")
-                    try:
-                        ip, port = ip_port.split(':')
-                        p2p.see_seed_node_description(ip.strip(),int(port.strip()))
-                    except ValueError:
-                        print("Invalid format! Please enter in IP:PORT format by entering the action number again...")
+                    elif action == 2:
+                        ip_port = input("Enter the IP and PORT of the seed node (format: IP:PORT): ")
+                        try:
+                            ip, port = ip_port.split(':')
+                            p2p.see_seed_node_description(ip.strip(),int(port.strip()))
+                        except ValueError:
+                            print("Invalid format! Please enter in IP:PORT format by entering the action number again...")
 
-                elif action == 3:
-                    ip_port = input("Enter the IP and PORT of the seed node (format: IP:PORT): ")
-                    try:
-                        ip, port = ip_port.strip().split(':')
-                        p2p.close_seed(ip.strip(), int(port.strip()))
-                    except ValueError:
-                        print("Invalid format! Please enter in IP:PORT format by entering the action number again...")
+                    elif action == 3:
+                        ip_port = input("Enter the IP and PORT of the seed node (format: IP:PORT): ")
+                        try:
+                            ip, port = ip_port.strip().split(':')
+                            p2p.close_seed(ip.strip(), int(port.strip()))
+                        except ValueError:
+                            print("Invalid format! Please enter in IP:PORT format by entering the action number again...")
 
-                elif action == 4:
-                    p2p.close_all_seeds()
-                    print("We were happy to provide service :-)\nShutting Down Network!!")
-                    break
+                    elif action == 4:
+                        p2p.close_all_seeds()
+                        print("We were happy to provide service :-)\nShutting Down Network!!")
+                        break
 
-                elif action == 5:
-                    print(menu)
+                    elif action == 5:
+                        print(menu)
 
-                else:
-                    print(f"Invalid option! Please select a valid action.\n{menu}")
+                    else:
+                        print(f"Invalid option! Please select a valid action.\n{menu}")
 
-            except ValueError:
-                print("Invalid input! Please enter a number corresponding to an action.")
-            except Exception as e:
-                print(f"An error occurred: {e}")
+                except ValueError:
+                    print("Invalid input! Please enter a number corresponding to an action.")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
 
-        p2p.save_topology()
+            p2p.save_topology()
+    except KeyboardInterrupt:
+        p2p.close_all_seeds()
+        print("We were happy to provide service :-)\nShutting Down Network!!")
