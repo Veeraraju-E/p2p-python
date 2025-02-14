@@ -91,14 +91,20 @@ class SeedNode:
             print(f"Error occured: {e}")
         
 
-    def report_dead_node(self,reporter_socket : socket.socket,reporter_addr : str):
+    def report_dead_node(self,reporter_socket : socket.socket,msg:str):
         '''
         Remove from my peer list
-        Broadcast Message to other peers in my list
         '''
-        pass
-
-    def send(self,message: str):
+        _,dead_ip,dead_port,ts,reporting_ip = msg.split(':')
+        while self.is_peer_list_locked:
+            waiting = 0
+        self.is_peer_list_locked = True
+        if (dead_ip,dead_port) in self.peer_list:
+            self.peer_list.remove((dead_ip,dead_port))
+        self.is_peer_list_locked = False
+        reporter_socket.close()
+    
+    def send(self,message: str,ip,port):
         '''
         Send the message (corresponds to one request)
         '''
@@ -119,7 +125,7 @@ class SeedNode:
                     self.accept_new_node(msg,peer_socket,peer_addr)
                     break
                 elif msg.startswith("Dead Node"):
-                    self.report_dead_node(peer_socket,peer_addr)
+                    self.report_dead_node(peer_socket,msg)
                     break
                 else:
                     peer_socket.sendall("Invalid Message Format".encode())

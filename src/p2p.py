@@ -179,6 +179,7 @@ if __name__ == "__main__":
                     print(f"An error occurred: {e}")
 
             p2p.save_topology()
+            
     except KeyboardInterrupt:
         p2p.close_all_seeds()
         print("We were happy to provide service :-)\nShutting Down Network!!")
