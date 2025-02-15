@@ -5,7 +5,6 @@ import time
 
 """
 1. Power law
-2. Dead node handling
 """
 
 class SeedNode:
@@ -95,6 +94,7 @@ class SeedNode:
         '''
         Remove from my peer list
         '''
+        print(msg)
         _,dead_ip,dead_port,ts,reporting_ip = msg.split(':')
         while self.is_peer_list_locked:
             waiting = 0
