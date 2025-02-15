@@ -4,13 +4,11 @@ import threading
 import traceback
 import os
 from time import sleep
-from datetime import datetime
+from time import time
 import hashlib
 
 """
 1. Broadcast
-2. Ping
-3. Dead node reporting
 """
 
 class PeerNode:
@@ -113,7 +111,7 @@ class PeerNode:
                     while self.no_peers_connected != 0:
                         waiting = 0
                     
-                    threading.Thread(target=self.broadcast,daemon=True).start() # to broadcast
+                    threading.Thread(target=self.broadcast,daemon=True).start()
                     threading.Thread(target=self.ping,daemon=True).start()
                     
             elif msg.startswith("Peer_Request_Sent"):
@@ -307,9 +305,9 @@ class PeerNode:
 
     def ping(self):
         try:
+            peers_not_responding = {}
             while True:
 
-                peers_not_responding = {}
                 while self.lock_peer_list:
                     waiting = 0
                 
@@ -318,19 +316,20 @@ class PeerNode:
                 for peer_ip,peer_port in self.peer_list:
                     response = None
                     if peer_ip == self.ip:
-                        print(f"{peer_ip} {peer_port}")
-                        response = os.system(f"nc -z {peer_ip} {peer.port}")
+                        response = socket.socket(socket.AF_INET,socket.SOCK_STREAM).connect_ex((peer_ip,peer_port))
                     else:
                         response = os.system(f"ping -c 1 {peer_ip}")
-                    print(response)
+                    
                     if response != 0:
                         if peers_not_responding.get((peer_ip,peer_port),None) == None:
-                            print(f"{peer_ip} {peer_port} is not responding first time")
+                            
                             peers_not_responding[(peer_ip,peer_port)] = 1
                         else:
                             peers_not_responding[(peer_ip,peer_port)]+=1
                             if peers_not_responding[(peer_ip,peer_port)] == 3:
                                 print(f"{peer_ip} {peer_port} is dead")
+                                self.peer_list.remove((peer_ip,peer_port))
+                                peers_not_responding.pop((peer_ip,peer_port))
                                 threading.Thread(target=self.report_dead_node,args=((peer_ip,peer_port),),daemon=True).start()
                     else:
                         if peers_not_responding.get((peer_ip,peer_port),None) != None:
@@ -349,16 +348,10 @@ class PeerNode:
             for seed in self.seed_node_list:
                 seed_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 seed_socket.connect(seed)
-                ts = datetime.now()
+                ts = time()
                 seed_socket.sendall(f"Dead Node:{dead_node_addr[0]}:{dead_node_addr[1]}:{ts}:{self.ip}".encode())
                 seed_socket.close()
             
-            while self.lock_peer_list:
-                waiting = 0
-
-            self.lock_peer_list = True
-            self.peer_list.remove(dead_node_addr)
-            self.lock_peer_list = False
         except Exception as e:
             print(f"Error occured while reporting dead node: {e}")
 
