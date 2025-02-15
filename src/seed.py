@@ -64,7 +64,7 @@ class SeedNode:
             if len(peer_list_temp) != 0:
                 for peers_ip,peers_port in peer_list_temp:
                     msg+=f"{peers_ip}:{peers_port},"
-                    print(msg)
+                    # print(msg)
                 
                 msg = msg.rstrip(',')
                 print(msg)
