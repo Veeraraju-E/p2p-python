@@ -5,6 +5,7 @@ import traceback
 import os
 from time import sleep
 from datetime import datetime
+import hashlib
 
 """
 1. Broadcast
@@ -27,6 +28,9 @@ class PeerNode:
             self.received_peer_set = set()
             self.no_seed_nodes = 0
             self.no_peers_connected = 0
+
+            self.message_list = {}  # {hash_msg: set of peers}
+            self.message_count = 0
 
         except Exception as e:
             print(f"Error initializing PeerNode: {e}")
@@ -109,13 +113,22 @@ class PeerNode:
                     while self.no_peers_connected != 0:
                         waiting = 0
                     
-                    threading.Thread(target=self.broadcast,daemon=True).start()
+                    threading.Thread(target=self.broadcast,daemon=True).start() # to broadcast
                     threading.Thread(target=self.ping,daemon=True).start()
                     
             elif msg.startswith("Peer_Request_Sent"):
                 self.accept_received_peer_request(msg, peer_socket)
             elif msg.startswith("Peer_Request_Accepted"):
                 self.accept_sent_peer_request(msg, peer_socket)
+            elif msg.startswith("Gossip:"): # to forward broadcast messages and gossip, msg will start with Gossip:
+                message = msg.split("Gossip:")[1]
+                # print(f'Gossip Received: {message}')
+                message_hashed = self._hash_msg(message)
+                if message_hashed not in self.message_list.keys():
+                    self.message_list[message_hashed] = set()
+                if peer_addr[0] not in self.message_list[message_hashed]:
+                    self.message_list[message_hashed].add(peer_addr[0])
+                    self._broadcast(message, message_hashed, peer_addr)
             else:
                 peer_socket.sendall("Invalid Message Format".encode())
 
@@ -248,7 +261,50 @@ class PeerNode:
         except Exception as e:
             print(f"Error occurred! {e}")
             return ""
-#---------------------------------------------------------------------------------------------------------------------#    
+#---------------------------------------------------------------------------------------------------------------------#
+    def _hash_msg(self, msg):
+        return hashlib.sha256(msg.encode()).hexdigest()
+
+    def _broadcast(self, message, message_hash, sender):
+        try:
+            while self.lock_peer_list:
+                waiting = 0
+
+            self.lock_peer_list = True
+            
+            for peer_ip, peer_port in self.peer_list:
+                if (peer_ip, peer_port) == sender:  # sender may occur in the future iterations, not the first time
+                    continue
+                if peer_ip in self.message_list.get(message_hash, set()):  # Avoid duplicate forwarding
+                    continue
+                try:
+                    peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    peer_socket.connect((peer_ip, peer_port))
+                    peer_socket.sendall(f"Gossip:{message}".encode())
+                    peer_socket.close()
+                    self.message_list[message_hash].add(peer_ip)    # add to set
+                except Exception as e:
+                    print(f"Error occurred while forwarind msg! {e}")
+            self.lock_peer_list = False
+
+        except Exception as e:
+            print(f"Error occurred while forwarind msg! {e}")
+
+
+    def broadcast(self):
+        try:
+            while self.message_count < 10:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                message = f"{timestamp}:{self.ip}:{self.message_count}"
+                message_hash = self._hash_msg(message)
+                self.message_list[message_hash] = set()
+                print(f"Broadcasting Message #{self.message_count}: {message}")
+                self._broadcast(message, message_hash, None)
+                self.message_count += 1
+                sleep(5)   # generate msg every 5s for 10 times
+        except Exception as e:
+            print(f"Error occurred while broadcasting! {e}")
+
     def ping(self):
         try:
             while True:
