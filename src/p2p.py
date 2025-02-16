@@ -4,6 +4,14 @@ import traceback
 import os
 import time
 import json
+import networkx as nx
+import matplotlib.pyplot as plt
+
+"""
+Need to handle
+1. Dead node - after termination, seed is not updating its peer list
+2. If Seed Node dies, then peers are still communicating with each other
+"""
 
 class P2PNetwork:
 
@@ -99,6 +107,22 @@ class P2PNetwork:
         with open(filename, "w") as file:
             json.dump(topology, file)
 
+        G = nx.Graph()
+        visited_peers = set()
+        for seed, peers in topology.items():
+            G.add_node(seed, color='red')
+            for peer in peers:
+                if peer not in visited_peers:
+                    G.add_node(peer, color='blue')
+                    visited_peers.add(peer)
+                G.add_edge(seed, peer)
+        
+        pos = nx.spring_layout(G)
+        colors = [G.nodes[node]['color'] for node in G.nodes]
+        nx.draw(G, pos, with_labels=True, node_color=colors, node_size=500, font_size=10, font_color='black')
+        plt.title("P2P Network Topology")
+        plt.savefig("topology.png")
+
 
 print("=" * 50)
 print("           Welcome to the VnS Network!          ")
@@ -133,7 +157,8 @@ if __name__ == "__main__":
             2. Get A Seed Node Description
             3: Stop a specific seed node
             4: Stop all seed nodes and shut down the network
-            5: Show the menu again
+            5: Plot the current topology
+            6: Show the menu again
             """
 
             print(menu)
@@ -141,7 +166,7 @@ if __name__ == "__main__":
             while True:
                 try:
                     action = int(input("\nEnter your action number: "))
-
+                    print(action, type(action))
                     if action == 1:
                         seeds = p2p.see_seed_nodes()
                         print(seeds)
@@ -168,6 +193,9 @@ if __name__ == "__main__":
                         break
 
                     elif action == 5:
+                        p2p.save_topology()
+
+                    elif action == 6:
                         print(menu)
 
                     else:
@@ -178,7 +206,6 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(f"An error occurred: {e}")
 
-            p2p.save_topology()
             
     except KeyboardInterrupt:
         p2p.close_all_seeds()

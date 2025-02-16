@@ -78,10 +78,21 @@ class SeedNode:
             if (peer_ip,peer_port) in self.peer_list:
                 peer_socket.sendall("You are already connected to the me".encode())
                 return
-        
-            self.send_update_network_message(peer_ip,peer_port)
-            peer_list_msg = self.list_to_send(peer_ip,peer_port,True)
+            
+          
+            msg = f"SeedNode={self.ip}:{self.port}||"
 
+            if len(peer_list_temp) != 0:
+                for peers_ip,peers_port in peer_list_temp:
+                    msg+=f"{peers_ip}:{peers_port},"
+                    print(msg)
+                
+                msg = msg.rstrip(',')
+                print(msg)
+            else:
+                msg+="No"
+            peer_socket.close()
+            
             peer_socket =  socket.socket(socket.AF_INET,socket.SOCK_STREAM)
             peer_socket.connect((peer_ip,int(peer_port)))
             peer_socket.sendall(peer_list_msg.encode())
