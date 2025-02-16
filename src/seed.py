@@ -2,17 +2,23 @@
 import socket
 import threading
 import time
+import numpy as np
+import hashlib
 
 """
 1. Power law
+2. Update Network topology when there is a dead node
 """
 
 class SeedNode:
     def __init__(self, port):
         try:
-            self.peer_list = [] # list of tuples of (addr, port) of all peers in the network
+            self.topology = {}
+            self.peer_list = []
             self.ip = socket.gethostbyname(socket.getfqdn())
             self.port = port
+            self.gamma = 2.5
+            self.config_file = "config.txt"
             self.is_peer_list_locked = False
             self.listening = False
             print(f'Config of SeedNode: {self.ip}:{self.port}, Peer List: {self.peer_list}')
@@ -39,7 +45,23 @@ class SeedNode:
         except Exception as e:
             print(f"Couldn't return description: {e}")
             return None
-       
+    
+    def update_network(self,peer_socket:socket.socket,msg:str):
+
+        _,peer_ip,peer_port,seed_ip,seed_port = msg.split(':')
+
+        self.list_to_send(peer_ip,peer_port,False)
+    
+    def send_update_network_message(self,peer_ip,peer_port):
+        seed_list = open(self.config_file,"r").readlines()
+        for seed in seed_list:
+            seed_ip, seed_port = seed.split(':')
+            seed_port = seed_port.strip() 
+            seed_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            seed_socket.connect((seed_ip,int(seed_port)))
+            seed_socket.sendall(f"Update Network:{peer_ip}:{peer_port}:{self.ip}:{self.port}")
+            seed_socket.close()
+
     def accept_new_node(self,msg:str,peer_socket:socket.socket,peer_addr):
         '''
         Peer Message Format: Sends a message with string "Myself"
@@ -52,42 +74,54 @@ class SeedNode:
 
             _,peer_ip,peer_port = msg.split(':')
             print(f"Received connection request from {peer_ip}:{peer_port}")
-            peer_list_temp = self.peer_list
-            print(f"Peer List at {self.ip}:{self.port} = {self.peer_list}")
+
             if (peer_ip,peer_port) in self.peer_list:
                 peer_socket.sendall("You are already connected to the me".encode())
                 return
-            
-          
-            msg = f"SeedNode={self.ip}:{self.port}||"
+        
+            self.send_update_network_message(peer_ip,peer_port)
+            peer_list_msg = self.list_to_send(peer_ip,peer_port,True)
 
-            if len(peer_list_temp) != 0:
-                for peers_ip,peers_port in peer_list_temp:
-                    msg+=f"{peers_ip}:{peers_port},"
-                    print(msg)
-                
-                msg = msg.rstrip(',')
-                print(msg)
-            else:
-                msg+="No"
-            peer_socket.close()
-            
             peer_socket =  socket.socket(socket.AF_INET,socket.SOCK_STREAM)
             peer_socket.connect((peer_ip,int(peer_port)))
-            peer_socket.sendall(msg.encode())
+            peer_socket.sendall(peer_list_msg.encode())
             peer_socket.close()
 
-            while self.is_peer_list_locked:
-                waiting=1
-
-            self.is_peer_list_locked = True
-            self.peer_list.append((peer_ip,int(peer_port)))
-            self.is_peer_list_locked = False
 
         except socket.timeout:
             peer_socket.sendall("Timeout!".encode())
         except Exception as e:
             print(f"Error occured: {e}")
+    
+    def list_to_send(self,peer_ip,peer_port,isConnectionRequested:bool,min_peers):
+
+        while self.is_peer_list_locked:
+            waiting = 0
+        
+        self.is_peer_list_locked = True
+        print(f"Peer List at {self.ip}:{self.port} = {self.peer_list}")
+        
+        msg = f"SeedNode={self.ip}:{self.port}||"
+
+        if len(self.peer_list) == 0:
+            return msg+"No"
+        
+        peer_weights = {peer: self.topology[peer]**(-self.gamma) for peer in self.peer_list}
+        sorted_peers = sorted(self.peer_list,key=lambda p: (-peer_weights[p],hash_helper(str(p))))
+        peer_list = sorted_peers[:min(min_peers,len(sorted_peers))]
+
+        self.topology
+
+
+        def hash_helper(self,key:str):
+            return int(hashlib.sha256(key.encode()).hexdigest(),16)
+        
+        
+        if isConnectionRequested:
+            self.peer_list.append((peer_ip,peer_port))
+        self.is_peer_list_locked = False
+        return msg
+            
         
 
     def report_dead_node(self,reporter_socket : socket.socket,msg:str):
@@ -98,6 +132,7 @@ class SeedNode:
         _,dead_ip,dead_port,ts,reporting_ip = msg.split(':')
         while self.is_peer_list_locked:
             waiting = 0
+        
         self.is_peer_list_locked = True
         if (dead_ip,dead_port) in self.peer_list:
             self.peer_list.remove((dead_ip,dead_port))
@@ -127,6 +162,8 @@ class SeedNode:
                 elif msg.startswith("Dead Node"):
                     self.report_dead_node(peer_socket,msg)
                     break
+                elif msg.startswith("Network Update"):
+                    self.update_network(peer_socket,msg)
                 else:
                     peer_socket.sendall("Invalid Message Format".encode())
                     break
