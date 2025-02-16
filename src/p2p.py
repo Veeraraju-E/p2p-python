@@ -98,11 +98,11 @@ class P2PNetwork:
         except Exception as e:
             print(f"Couldn't Process your request...\nIssue: {e}")
 
-    def save_topology(self, filename="topology.json"):
+    def plot_topology(self, filename="topology.json"):
         topology = {}
         for seed in self.seeds:
-            seed_info = f"{seed.ip}:{seed.port}"
-            peers = [f"{peer_ip}:{peer_port}" for peer_ip, peer_port in seed.peer_list]
+            seed_info = f"{seed.port}"
+            peers = [f"{peer_port}" for _, peer_port in seed.peer_list]
             topology[seed_info] = peers
         with open(filename, "w") as file:
             json.dump(topology, file)
@@ -121,6 +121,8 @@ class P2PNetwork:
         colors = [G.nodes[node]['color'] for node in G.nodes]
         nx.draw(G, pos, with_labels=True, node_color=colors, node_size=500, font_size=10, font_color='black')
         plt.title("P2P Network Topology")
+        if os.path.exists("topology.png"):
+            os.remove("topology.png")
         plt.savefig("topology.png")
 
 
@@ -166,7 +168,7 @@ if __name__ == "__main__":
             while True:
                 try:
                     action = int(input("\nEnter your action number: "))
-                    print(action, type(action))
+                    # print(action, type(action))
                     if action == 1:
                         seeds = p2p.see_seed_nodes()
                         print(seeds)
@@ -193,7 +195,7 @@ if __name__ == "__main__":
                         break
 
                     elif action == 5:
-                        p2p.save_topology()
+                        p2p.plot_topology()
 
                     elif action == 6:
                         print(menu)
