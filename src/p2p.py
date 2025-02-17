@@ -2,7 +2,6 @@ from seed import SeedNode
 import threading
 import traceback
 import os
-import time
 import json
 import networkx as nx
 import matplotlib.pyplot as plt

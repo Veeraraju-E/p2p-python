@@ -7,6 +7,8 @@ from time import sleep
 from time import time
 import hashlib
 from datetime import datetime
+import numpy as np
+import requests
 
 """
 1. Broadcast - remove port from the message
@@ -22,7 +24,8 @@ class PeerNode:
             self.peer_connections = {}  # dictionary to track connections between peers
 
             self.config_file = config_file
-            self.ip = socket.gethostbyname(socket.getfqdn())
+            self.ip = '10.23.16.114'
+            print(self.ip)
             self.port = None
             self.listening = False
             self.lock_peer_list = False
@@ -31,12 +34,18 @@ class PeerNode:
             self.no_seed_nodes = 0
             self.no_peers_connected = 0
 
+            self.request_sent_peers = set()
+            self.gamma = 2.5
+
             self.message_list = {}  # {hash_msg: set of peers}
             self.message_count = 0
 
         except Exception as e:
             print(f"Error initializing PeerNode: {e}")
-
+    
+    def hash_helper(self, key: str):
+        return int(hashlib.sha256(key.encode()).hexdigest(), 16)
+    
     def connect_to_network(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -102,18 +111,54 @@ class PeerNode:
 
             if msg.startswith("SeedNode="):
 
-                self.no_seed_nodes-=1
                 self.process_seed_request(msg)
 
-                if self.no_seed_nodes == 0:
-                    self.no_peers_connected = len(self.received_peer_set)
-                    # for peer_ip,peer_port in self.received_peer_set:
-                    #     t = threading.Thread(target=self.send_request_to_peer,args=(peer_ip,peer_port),daemon=True)
-                    #     t.start()
-                    self.connect_to_peers()
+                degree = 0
+                print(f"Seeds {self.no_seed_nodes}")
+                if self.no_seed_nodes == 0 and len(self.received_peer_set) != 0:
+
+                    degrees = np.array([peer[2] for peer in self.received_peer_set])
+
+                    k_min = np.min(degrees)
+                    k_max = np.max(degrees)
+
+                    peers = np.array([(p[0],p[1]) for p in self.received_peer_set])
+
+                    weights = [0]
+                    if (degrees != [0]).all():
+                        weights = degrees ** (-self.gamma)
+                    if np.sum(weights) != 0:
+                        probs = weights / np.sum(weights)
+                    else:
+                        probs = weights/np.sum([1])
+
+                    selected_nodes = [node for node, prob in zip(peers, probs) if np.random.rand() > prob]
+
+                    if len(selected_nodes) == 0:
+                        selected_nodes = [peers[np.argmax(probs)]]
+
+                    self.no_peers_connected = len(selected_nodes)
+                    
+                    degree = self.no_peers_connected
+                    
+                    for peer_ip,peer_port in selected_nodes:
+                        if (peer_ip,int(peer_port)) not in self.request_sent_peers:
+                            self.request_sent_peers.add((peer_ip,int(peer_port)))
+                            t = threading.Thread(target=self.send_request_to_peer,args=(peer_ip,int(peer_port)),daemon=True)
+                            t.start()
+                    
                     while self.no_peers_connected != 0:
                         waiting = 0
-                    
+
+                    self.no_peers_connected = degree
+
+                    threading.Thread(target=self.send_seed_degree,daemon=True).start()
+                    threading.Thread(target=self.broadcast,daemon=True).start()
+                    threading.Thread(target=self.ping,daemon=True).start()
+
+                elif self.no_seed_nodes == 0:
+                    self.no_peers_connected = 0
+                    threading.Thread(target=self.send_seed_degree,daemon=True).start()
                     threading.Thread(target=self.broadcast,daemon=True).start()
                     threading.Thread(target=self.ping,daemon=True).start()
                     
@@ -130,6 +175,7 @@ class PeerNode:
                 if peer_addr[1] not in self.message_list[message_hashed]:
                     self.message_list[message_hashed].add(peer_addr[1])
                     self._broadcast(message, message_hashed, peer_addr)
+                # print(f'For Peer {peer_addr[0]}:{peer_addr[1]}: ML: {self.message_list}')
                 # print(f'For Peer {peer_addr[0]}:{peer_addr[1]}: ML: {self.message_list}')
             else:
                 peer_socket.sendall("Invalid Message Format".encode())
@@ -168,13 +214,27 @@ class PeerNode:
 
                 peers_available = seed_reply.split(',')
                 for peer in peers_available:
-                    peer_ip, peer_port = peer.split(':')
-                    self.received_peer_set.add((peer_ip,int(peer_port)))
+                    peer_ip, peer_port,degree = peer.split(':')
+                    self.received_peer_set.add((peer_ip,int(peer_port),int(degree)))
+            
+            self.no_seed_nodes-=1
 
         except Exception as e:
             print(f"Error occurred in connecting to peers! {e}")
             self.lock_seed_list = False
             traceback.print_exc()
+    
+    def send_seed_degree(self):
+
+        try:
+            for seed in self.seed_node_list:
+                s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                s.connect(seed)
+                s.sendall(f"Degree_Sent:{self.ip}:{self.port}:{self.no_peers_connected}".encode())
+                sleep(5)
+                s.close()
+        except Exception as e:
+            print(f"Error while sending degree to seeds {e}")
 #----------------------------------------------------------------------------------------------------------------------#
     def connect_to_peers(self):
         try:
@@ -249,7 +309,7 @@ class PeerNode:
             peer_socket.close()
             _, peer_ip, peer_port = msg.split(':')
             print(f"Peer request received from {peer_ip}:{peer_port}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer request received from {peer_ip}:{peer_port}")
             peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -257,7 +317,7 @@ class PeerNode:
             peer_socket.sendall(f"Peer_Request_Accepted:{self.ip}:{self.port}".encode())
             peer_socket.close()
             print(f"Peer request accepted message is sent to {peer_ip}:{peer_port}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer request accepted message is sent to {peer_ip}:{peer_port}\n")
             while self.lock_peer_list:
@@ -269,12 +329,12 @@ class PeerNode:
             self.peer_degrees[(self.ip, self.port)] = self.peer_degrees.get((self.ip, self.port), 0) + 1
             
             self.lock_peer_list = False
-            self.update_peer_connections((self.ip, self.port), (peer_ip, peer_port))
-
+            self.no_peers_connected+=1
+            self.send_seed_degree()
 
         except Exception as e:
             print(f"Error occurred in accepting received peer request! {e}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Error occurred in accepting received peer request! {e}\n")
             self.lock_peer_list = False
@@ -285,7 +345,7 @@ class PeerNode:
             _, peer_ip, peer_port = msg.split(':')
             peer_socket.close()
             print(f"Received acceptance from the peer {peer_ip}:{peer_port}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Received acceptance from the peer {peer_ip}:{peer_port}\n")
             
@@ -299,7 +359,7 @@ class PeerNode:
             
             self.no_peers_connected-=1
             print(f"Peer List now is {self.peer_list}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer List now is {self.peer_list}\n")
             
@@ -376,6 +436,9 @@ class PeerNode:
 
     def broadcast(self):
         try:
+            while len(self.peer_list) == 0:
+                continue
+            
             while self.message_count < 10:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 message = f"{timestamp}:{self.ip}:{self.port}:{self.message_count}" # adding port for debugging only
@@ -383,7 +446,7 @@ class PeerNode:
                 self.message_list[message_hash] = set()
                 print(f"Broadcasting Message #{self.message_count}: {message}")
                 if self.message_count == 0:
-                    with open("logfile.txt", "a") as log_file:
+                    with open("output.txt", "a") as log_file:
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         log_file.write(f"{timestamp}:Broadcasting First Message : {message}\n")
                 self._broadcast(message, message_hash, None)
