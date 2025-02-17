@@ -21,7 +21,6 @@ class SeedNode:
             self.is_peer_list_locked = False
             self.listening = False
             self.is_network_updating = False
-            print(f'Config of SeedNode: {self.ip}:{self.port}, Peer List: {self.peer_list}')
 
         except Exception as e:
             print(f"Error initializing SeedNode {port}: {e}")
@@ -81,7 +80,7 @@ class SeedNode:
         try:
 
             _,peer_ip,peer_port = msg.split(':')
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Seed received connection request from {peer_ip}:{peer_port}\n")
             
@@ -93,12 +92,15 @@ class SeedNode:
             
             peer_socket.close()
             peer_list_msg = self.list_to_send(peer_ip,int(peer_port))
-            
-            peer_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-            peer_socket.connect((peer_ip,int(peer_port)))
-            peer_socket.sendall(peer_list_msg.encode())
-            peer_socket.close()
 
+            peer_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            
+            peer_socket.connect((peer_ip,int(peer_port)))
+            
+            peer_socket.sendall(peer_list_msg.encode())
+            
+            peer_socket.close()
+            
         except socket.timeout:
             peer_socket.sendall("Timeout!".encode())
         except Exception as e:
@@ -163,8 +165,10 @@ class SeedNode:
                 if not data: 
                     break
                 msg += data.decode()
+                
 
                 if msg.startswith("Myself"):
+                
                     self.accept_new_node(msg,peer_socket,peer_addr)
                     break
                 elif msg.startswith("Dead Node"):
@@ -202,7 +206,7 @@ class SeedNode:
                
             while self.listening:
                 peer_socket, peer_addr = self.server.accept()
-                print(f"Accepted connection from {peer_addr}")
+                
                 with open("output.txt", "a") as log_file:
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     log_file.write(f"{timestamp}:Seed accepted connection from {peer_addr}\n")
