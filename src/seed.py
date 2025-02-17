@@ -1,6 +1,9 @@
 # >1 seed node
 import socket
 import threading
+import time
+import random
+from datetime import datetime
 
 """
 1. Power law
@@ -80,15 +83,20 @@ class SeedNode:
 
             _,peer_ip,peer_port = msg.split(':')
             print(f"Received connection request from {peer_ip}:{peer_port}")
-
-            if (peer_ip,int(peer_port)) in self.peer_list:
+            with open("logfile.txt", "a") as log_file:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                log_file.write(f"{timestamp}:Seed received connection request from {peer_ip}:{peer_port}\n")
+            
+            peer_list_temp = self.peer_list
+            # print(f"Peer List at {self.ip}:{self.port} = {self.peer_list}")
+            if (peer_ip,peer_port) in self.peer_list:
                 peer_socket.sendall("You are already connected to the me".encode())
                 return
             
             peer_socket.close()
             peer_list_msg = self.list_to_send(peer_ip,int(peer_port))
             
-            peer_socket =  socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            peer_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
             peer_socket.connect((peer_ip,int(peer_port)))
             peer_socket.sendall(peer_list_msg.encode())
             peer_socket.close()
@@ -127,22 +135,20 @@ class SeedNode:
         '''
         Remove from my peer list
         '''
-        try:
-            print(msg)
-            _,dead_ip,dead_port,ts,reporting_ip = msg.split(':')
-            while self.is_peer_list_locked:
-                waiting = 0
-            
-            self.is_peer_list_locked = True
-            if (dead_ip,dead_port) in self.peer_list:
-                self.peer_list.remove((dead_ip,dead_port))
-                self.topology.pop((dead_ip, dead_port), None)
-
-            self.is_peer_list_locked = False
-            reporter_socket.close()
-        except Exception as e:
-            print(f"Error occured while deleting dead node {e}")
-            self.is_peer_list_locked = False
+        # print(msg)
+        _,dead_ip,dead_port,ts,reporting_ip = msg.split(':')
+        while self.is_peer_list_locked:
+            waiting = 0
+        self.is_peer_list_locked = True
+        if (dead_ip,dead_port) in self.peer_list:
+            self.peer_list.remove((dead_ip,dead_port))
+            self.peer_degrees.pop((dead_ip, dead_port), None)  # Remove the degree entry
+        with open("logfile.txt", "a") as log_file:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_file.write(f"{timestamp}:Node {dead_ip}:{dead_port} is dead.\n")
+    
+        self.is_peer_list_locked = False
+        reporter_socket.close()
     
     def send(self,message: str,ip,port):
         '''
@@ -196,10 +202,14 @@ class SeedNode:
             self.server.bind((self.ip,self.port))
             self.server.listen()
             print(f"SeedNode listening on {self.ip}:{self.port}")
-
+               
             while self.listening:
                 peer_socket, peer_addr = self.server.accept()
                 print(f"Accepted connection from {peer_addr}")
+                with open("logfile.txt", "a") as log_file:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    log_file.write(f"{timestamp}:Seed accepted connection from {peer_addr}\n")
+                            
                 t = threading.Thread(target=self.handle_request, args=(peer_socket,peer_addr), daemon=True)
                 # t.daemon = True
                 t.start()
