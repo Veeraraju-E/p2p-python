@@ -308,7 +308,7 @@ class PeerNode:
         try:
             peer_socket.close()
             _, peer_ip, peer_port = msg.split(':')
-            print(f"Peer request received from {peer_ip}:{peer_port}")
+            
             with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer request received from {peer_ip}:{peer_port}")
@@ -316,7 +316,7 @@ class PeerNode:
             peer_socket.connect((peer_ip, int(peer_port)))
             peer_socket.sendall(f"Peer_Request_Accepted:{self.ip}:{self.port}".encode())
             peer_socket.close()
-            print(f"Peer request accepted message is sent to {peer_ip}:{peer_port}")
+            
             with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer request accepted message is sent to {peer_ip}:{peer_port}\n")
@@ -333,7 +333,7 @@ class PeerNode:
             self.send_seed_degree()
 
         except Exception as e:
-            print(f"Error occurred in accepting received peer request! {e}")
+            
             with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Error occurred in accepting received peer request! {e}\n")
@@ -344,7 +344,7 @@ class PeerNode:
         try:
             _, peer_ip, peer_port = msg.split(':')
             peer_socket.close()
-            print(f"Received acceptance from the peer {peer_ip}:{peer_port}")
+            
             with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Received acceptance from the peer {peer_ip}:{peer_port}\n")
@@ -438,7 +438,7 @@ class PeerNode:
         try:
             while len(self.peer_list) == 0:
                 continue
-            
+
             while self.message_count < 10:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 message = f"{timestamp}:{self.ip}:{self.port}:{self.message_count}" # adding port for debugging only
@@ -480,6 +480,9 @@ class PeerNode:
                             peers_not_responding[(peer_ip,peer_port)]+=1
                             if peers_not_responding[(peer_ip,peer_port)] == 3:
                                 print(f"{peer_ip} {peer_port} is dead")
+                                with open("output.txt","a") as file:
+                                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    file.write(f"{timestamp}: {peer_ip} {peer_port} is dead")
                                 self.peer_list.remove((peer_ip,peer_port))
                                 peers_not_responding.pop((peer_ip,peer_port))
                                 threading.Thread(target=self.report_dead_node,args=((peer_ip,peer_port),),daemon=True).start()
@@ -489,7 +492,6 @@ class PeerNode:
                             peers_not_responding.pop((peer_ip,peer_port))
                             
                 self.lock_peer_list = False
-                print(peers_not_responding)
                 sleep(5)
 
         except Exception as e:
