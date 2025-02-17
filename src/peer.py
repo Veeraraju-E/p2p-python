@@ -7,6 +7,7 @@ from time import sleep
 from time import time
 import hashlib
 from datetime import datetime
+import numpy as np
 
 """
 1. Broadcast - remove port from the message
@@ -28,12 +29,18 @@ class PeerNode:
             self.no_seed_nodes = 0
             self.no_peers_connected = 0
 
+            self.request_sent_peers = set()
+            self.gamma = 2.5
+
             self.message_list = {}  # {hash_msg: set of peers}
             self.message_count = 0
 
         except Exception as e:
             print(f"Error initializing PeerNode: {e}")
-
+    
+    def hash_helper(self, key: str):
+        return int(hashlib.sha256(key.encode()).hexdigest(), 16)
+    
     def connect_to_network(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -100,20 +107,54 @@ class PeerNode:
 
             if msg.startswith("SeedNode="):
 
-                self.no_seed_nodes-=1
                 self.process_seed_request(msg)
 
-                if self.no_seed_nodes == 0:
-                    self.no_peers_connected = len(self.received_peer_set)
-                    for peer_ip,peer_port in self.received_peer_set:
-                        t = threading.Thread(target=self.send_request_to_peer,args=(peer_ip,peer_port),daemon=True)
-                        t.start()
+                degree = 0
+                print(f"Seeds {self.no_seed_nodes}")
+                if self.no_seed_nodes == 0 and len(self.received_peer_set) != 0:
+
+                    degrees = np.array([peer[2] for peer in self.received_peer_set])
+
+                    k_min = np.min(degrees)
+                    k_max = np.max(degrees)
+
+                    peers = np.array([(p[0],p[1]) for p in self.received_peer_set])
+
+                    weights = [0]
+                    if (degrees != [0]).all():
+                        weights = degrees ** (-self.gamma)
+                    if np.sum(weights) != 0:
+                        probs = weights / np.sum(weights)
+                    else:
+                        probs = weights/np.sum([1])
+
+                    selected_nodes = [node for node, prob in zip(peers, probs) if np.random.rand() > prob]
+
+                    if len(selected_nodes) == 0:
+                        selected_nodes = [peers[np.argmax(probs)]]
+
+                    self.no_peers_connected = len(selected_nodes)
+                    
+                    degree = self.no_peers_connected
+                    
+                    for peer_ip,peer_port in selected_nodes:
+                        if (peer_ip,int(peer_port)) not in self.request_sent_peers:
+                            self.request_sent_peers.add((peer_ip,int(peer_port)))
+                            t = threading.Thread(target=self.send_request_to_peer,args=(peer_ip,int(peer_port)),daemon=True)
+                            t.start()
                     
                     while self.no_peers_connected != 0:
                         waiting = 0
-                    
+
+                    self.no_peers_connected = degree
+
+                    threading.Thread(target=self.send_seed_degree,daemon=True).start()
                     threading.Thread(target=self.broadcast,daemon=True).start()
                     threading.Thread(target=self.ping,daemon=True).start()
+
+                elif self.no_seed_nodes == 0:
+                    self.no_peers_connected = 0
+                    threading.Thread(target=self.send_seed_degree,daemon=True).start()
                     
             elif msg.startswith("Peer_Request_Sent"):
                 self.accept_received_peer_request(msg, peer_socket)
@@ -128,7 +169,7 @@ class PeerNode:
                 if peer_addr[1] not in self.message_list[message_hashed]:
                     self.message_list[message_hashed].add(peer_addr[1])
                     self._broadcast(message, message_hashed, peer_addr)
-                print(f'For Peer {peer_addr[0]}:{peer_addr[1]}: ML: {self.message_list}')
+                # print(f'For Peer {peer_addr[0]}:{peer_addr[1]}: ML: {self.message_list}')
             else:
                 peer_socket.sendall("Invalid Message Format".encode())
 
@@ -166,13 +207,27 @@ class PeerNode:
 
                 peers_available = seed_reply.split(',')
                 for peer in peers_available:
-                    peer_ip, peer_port = peer.split(':')
-                    self.received_peer_set.add((peer_ip,int(peer_port)))
+                    peer_ip, peer_port,degree = peer.split(':')
+                    self.received_peer_set.add((peer_ip,int(peer_port),int(degree)))
+            
+            self.no_seed_nodes-=1
 
         except Exception as e:
             print(f"Error occurred in connecting to peers! {e}")
             self.lock_seed_list = False
             traceback.print_exc()
+    
+    def send_seed_degree(self):
+
+        try:
+            for seed in self.seed_node_list:
+                s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                s.connect(seed)
+                s.sendall(f"Degree_Sent:{self.ip}:{self.port}:{self.no_peers_connected}".encode())
+                sleep(5)
+                s.close()
+        except Exception as e:
+            print(f"Error while sending degree to seeds {e}")
 #----------------------------------------------------------------------------------------------------------------------#
     def send_request_to_peer(self, peer_ip, peer_port):
         try:
@@ -197,12 +252,15 @@ class PeerNode:
             peer_socket.sendall(f"Peer_Request_Accepted:{self.ip}:{self.port}".encode())
             peer_socket.close()
             print(f"Peer request accepted message is sent to {peer_ip}:{peer_port}")
+
             while self.lock_peer_list:
                 waiting = 0
 
             self.lock_peer_list = True
             self.peer_list.append((peer_ip, int(peer_port)))
             self.lock_peer_list = False
+            self.no_peers_connected+=1
+            self.send_seed_degree()
 
         except Exception as e:
             print(f"Error occurred in accepting received peer request! {e}")
