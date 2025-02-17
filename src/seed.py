@@ -1,9 +1,8 @@
 # >1 seed node
 import socket
 import threading
-import time
-import random
 from datetime import datetime
+import requests
 
 """
 1. Power law
@@ -15,7 +14,7 @@ class SeedNode:
         try:
             self.topology = {}
             self.peer_list = []
-            self.ip = socket.gethostbyname(socket.getfqdn())
+            self.ip = '10.23.16.114'
             self.port = port
             self.gamma = 2.5
             self.config_file = "config.txt"
@@ -50,7 +49,7 @@ class SeedNode:
     def update_network(self,peer_socket:socket.socket,msg:str):
 
         _,peer_ip,peer_port,degree = msg.split(':')
-        print(msg)
+        
         self.is_network_updating = True
         if self.topology.get((peer_ip,int(peer_port)),None) == None:
             self.topology[(peer_ip,int(peer_port))]=int(degree)
@@ -82,7 +81,6 @@ class SeedNode:
         try:
 
             _,peer_ip,peer_port = msg.split(':')
-            print(f"Received connection request from {peer_ip}:{peer_port}")
             with open("logfile.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Seed received connection request from {peer_ip}:{peer_port}\n")
@@ -113,7 +111,6 @@ class SeedNode:
                 waiting = 0
             
             self.is_peer_list_locked = True
-            print(f"Peer List at {self.ip}:{self.port} = {self.peer_list}")
             
             msg = f"SeedNode={self.ip}:{self.port}||"
 
@@ -143,7 +140,7 @@ class SeedNode:
         if (dead_ip,dead_port) in self.peer_list:
             self.peer_list.remove((dead_ip,dead_port))
             self.peer_degrees.pop((dead_ip, dead_port), None)  # Remove the degree entry
-        with open("logfile.txt", "a") as log_file:
+        with open("output.txt", "a") as log_file:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             log_file.write(f"{timestamp}:Node {dead_ip}:{dead_port} is dead.\n")
     
@@ -206,7 +203,7 @@ class SeedNode:
             while self.listening:
                 peer_socket, peer_addr = self.server.accept()
                 print(f"Accepted connection from {peer_addr}")
-                with open("logfile.txt", "a") as log_file:
+                with open("output.txt", "a") as log_file:
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     log_file.write(f"{timestamp}:Seed accepted connection from {peer_addr}\n")
                             

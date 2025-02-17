@@ -8,6 +8,7 @@ from time import time
 import hashlib
 from datetime import datetime
 import numpy as np
+import requests
 
 """
 1. Broadcast - remove port from the message
@@ -23,7 +24,8 @@ class PeerNode:
             self.peer_connections = {}  # dictionary to track connections between peers
 
             self.config_file = config_file
-            self.ip = socket.gethostbyname(socket.getfqdn())
+            self.ip = '10.23.16.114'
+            print(self.ip)
             self.port = None
             self.listening = False
             self.lock_peer_list = False
@@ -157,6 +159,8 @@ class PeerNode:
                 elif self.no_seed_nodes == 0:
                     self.no_peers_connected = 0
                     threading.Thread(target=self.send_seed_degree,daemon=True).start()
+                    threading.Thread(target=self.broadcast,daemon=True).start()
+                    threading.Thread(target=self.ping,daemon=True).start()
                     
             elif msg.startswith("Peer_Request_Sent"):
                 self.accept_received_peer_request(msg, peer_socket)
@@ -305,7 +309,7 @@ class PeerNode:
             peer_socket.close()
             _, peer_ip, peer_port = msg.split(':')
             print(f"Peer request received from {peer_ip}:{peer_port}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer request received from {peer_ip}:{peer_port}")
             peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -313,7 +317,7 @@ class PeerNode:
             peer_socket.sendall(f"Peer_Request_Accepted:{self.ip}:{self.port}".encode())
             peer_socket.close()
             print(f"Peer request accepted message is sent to {peer_ip}:{peer_port}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer request accepted message is sent to {peer_ip}:{peer_port}\n")
             while self.lock_peer_list:
@@ -330,7 +334,7 @@ class PeerNode:
 
         except Exception as e:
             print(f"Error occurred in accepting received peer request! {e}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Error occurred in accepting received peer request! {e}\n")
             self.lock_peer_list = False
@@ -341,7 +345,7 @@ class PeerNode:
             _, peer_ip, peer_port = msg.split(':')
             peer_socket.close()
             print(f"Received acceptance from the peer {peer_ip}:{peer_port}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Received acceptance from the peer {peer_ip}:{peer_port}\n")
             
@@ -355,7 +359,7 @@ class PeerNode:
             
             self.no_peers_connected-=1
             print(f"Peer List now is {self.peer_list}")
-            with open("logfile.txt", "a") as log_file:
+            with open("output.txt", "a") as log_file:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 log_file.write(f"{timestamp}:Peer List now is {self.peer_list}\n")
             
@@ -432,6 +436,9 @@ class PeerNode:
 
     def broadcast(self):
         try:
+            while len(self.peer_list) == 0:
+                continue
+            
             while self.message_count < 10:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 message = f"{timestamp}:{self.ip}:{self.port}:{self.message_count}" # adding port for debugging only
@@ -439,7 +446,7 @@ class PeerNode:
                 self.message_list[message_hash] = set()
                 print(f"Broadcasting Message #{self.message_count}: {message}")
                 if self.message_count == 0:
-                    with open("logfile.txt", "a") as log_file:
+                    with open("output.txt", "a") as log_file:
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         log_file.write(f"{timestamp}:Broadcasting First Message : {message}\n")
                 self._broadcast(message, message_hash, None)
