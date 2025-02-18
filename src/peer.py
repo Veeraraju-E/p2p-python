@@ -24,7 +24,7 @@ class PeerNode:
             self.peer_connections = {}  # dictionary to track connections between peers
 
             self.config_file = config_file
-            self.ip = '10.23.16.114'
+            self.ip = socket.gethostbyname(socket.gethostname())
             print(self.ip)
             self.port = None
             self.listening = False
@@ -114,7 +114,7 @@ class PeerNode:
                 self.process_seed_request(msg)
 
                 degree = 0
-                print(f"Seeds {self.no_seed_nodes}")
+                # print(f"Seeds {self.no_seed_nodes}")
                 if self.no_seed_nodes == 0 and len(self.received_peer_set) != 0:
 
                     degrees = np.array([peer[2] for peer in self.received_peer_set])
@@ -481,6 +481,7 @@ class PeerNode:
                             if peers_not_responding[(peer_ip,peer_port)] == 3:
                                 print(f"{peer_ip} {peer_port} is dead")
                                 with open("output.txt","a") as file:
+                                    print(f"{peer_ip} {peer_port} is dead")
                                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     file.write(f"{timestamp}: {peer_ip} {peer_port} is dead")
                                 self.peer_list.remove((peer_ip,peer_port))

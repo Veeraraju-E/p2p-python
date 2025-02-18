@@ -14,7 +14,7 @@ class SeedNode:
         try:
             self.topology = {}
             self.peer_list = []
-            self.ip = '10.23.16.114'
+            self.ip = socket.gethostbyname(socket.gethostname())
             self.port = port
             self.gamma = 2.5
             self.config_file = "config.txt"
